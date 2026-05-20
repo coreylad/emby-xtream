@@ -72,7 +72,7 @@ jobs:
             "overview": "An Emby/Jellyfin Server plugin that turns any Xtream-compatible IPTV service into a full Live TV, Movies, and Series library.",
             "owner": "coreylad",
             "category": "Live TV",
-            "imageUrl": "https://raw.githubusercontent.com/coreylad/emby-xtream/main/logo.svg",
+            "imageUrl": "https://raw.githubusercontent.com/coreylad/emby-xtream/main/Emby.Xtream.Plugin/thumb.png",
             "version": "${FOUR_PART}",
             "targetAbi": "10.9.0.0",
             "changelog": "${CHANGELOG}",
