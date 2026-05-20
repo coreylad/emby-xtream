@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -43,7 +43,7 @@ jobs:
             VERSION="0.0.1.${COMMIT_COUNT}"
           fi
           if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ] || [ -z "${{ github.event.before }}" ]; then
-            RANGE="HEAD"
+            RANGE="${{ github.sha }}^!"
           else
             RANGE="${{ github.event.before }}..${{ github.sha }}"
           fi
@@ -118,7 +118,21 @@ jobs:
         env:
           CHANGELOG: ${{ steps.meta.outputs.changelog }}
 
+      - name: Create release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          name: Xtream Tuner ${{ steps.meta.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            Emby.Xtream.Plugin/out/Emby.Xtream.Plugin.dll
+            ${{ steps.meta.outputs.zip_name }}
+          body_path: release_notes.md
+          draft: false
+
       - name: Update manifest.json
+        if: github.ref == 'refs/heads/main'
         run: |
           python3 - <<'PYEOF'
           import json, os, sys
@@ -153,6 +167,7 @@ jobs:
           TIMESTAMP:  ${{ steps.meta.outputs.timestamp }}
 
       - name: Commit updated manifest.json
+        if: github.ref == 'refs/heads/main'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -162,15 +177,3 @@ jobs:
           fi
           git commit -m "chore: update manifest.json for ${{ steps.meta.outputs.version }} [skip ci]"
           git push origin HEAD:${{ github.ref_name }}
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.release_tag }}
-          name: Xtream Tuner ${{ steps.meta.outputs.version }}
-          target_commitish: ${{ github.sha }}
-          files: |
-            Emby.Xtream.Plugin/out/Emby.Xtream.Plugin.dll
-            ${{ steps.meta.outputs.zip_name }}
-          body_path: release_notes.md
-          draft: false
