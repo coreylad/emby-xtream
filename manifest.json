@@ -3,11 +3,19 @@
     "guid": "b7e3c4a1-9f2d-4e8b-a5c6-d1f0e2b3c4a5",
     "name": "Xtream Tuner",
     "description": "Xtream-compatible Live TV tuner with EPG, category filtering, and pre-populated media info.",
-    "overview": "An Emby/Jellyfin Server plugin that turns any Xtream-compatible IPTV service into a full Live TV, Movies, and Series library — with EPG, metadata matching, and a built-in dashboard.",
+    "overview": "An Emby/Jellyfin Server plugin that turns any Xtream-compatible IPTV service into a full Live TV, Movies, and Series library \u2014 with EPG, metadata matching, and a built-in dashboard.",
     "owner": "coreylad",
     "category": "Live TV",
     "imageUrl": "https://raw.githubusercontent.com/coreylad/emby-xtream/main/Emby.Xtream.Plugin/thumb.png",
     "versions": [
+      {
+        "version": "0.0.1.165",
+        "changelog": "- 0e1e710e95cf9f42e9b7f472ba63039fed9571b4",
+        "targetAbi": "10.9.0.0",
+        "sourceUrl": "https://github.com/coreylad/emby-xtream/releases/download/release-0.0.1.165/jellyfin-xtream-tuner_0.0.1.165.zip",
+        "checksum": "e7e12242e1b446ff3bb206e5da550421",
+        "timestamp": "2026-05-20T19:02:26Z"
+      },
       {
         "version": "0.0.1.0",
         "changelog": "Initial Jellyfin catalog package.",
