@@ -89,6 +89,26 @@ A configuration UI embedded in Emby's plugin settings with five tabs.
 
 ## Installation
 
+### Option A: Jellyfin Plugin Repository (recommended for Jellyfin users)
+
+Add the repository URL in Jellyfin, then install the plugin from the catalog — no manual file copying needed.
+
+1. Open Jellyfin's web UI
+2. Go to **Dashboard > Plugins > Repositories**
+3. Click **+** and paste the repository URL:
+   ```
+   https://raw.githubusercontent.com/coreylad/emby-xtream/main/manifest.json
+   ```
+4. Click **Save**
+5. Go to **Plugins > Catalog**, find **Xtream Tuner**, and click **Install**
+6. Restart Jellyfin Server
+
+After restarting, configure the plugin at **Dashboard > Plugins > Xtream Tuner**.
+
+---
+
+### Option B: Manual DLL Installation (Emby or Jellyfin)
+
 ### Step 1: Download the Plugin
 
 Download `Emby.Xtream.Plugin.dll` from the [latest release](../../releases/latest).
