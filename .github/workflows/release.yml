@@ -90,21 +90,26 @@ jobs:
           CHANGELOG="${CHANGELOG}"
 
           # Write Jellyfin meta.json
-          cat > /tmp/meta.json <<EOF
-          {
-            "guid": "b7e3c4a1-9f2d-4e8b-a5c6-d1f0e2b3c4a5",
-            "name": "Xtream Tuner",
-            "description": "Xtream-compatible Live TV tuner with EPG, category filtering, and pre-populated media info.",
-            "overview": "An Emby/Jellyfin Server plugin that turns any Xtream-compatible IPTV service into a full Live TV, Movies, and Series library.",
-            "owner": "coreylad",
-            "category": "Live TV",
-            "imageUrl": "https://raw.githubusercontent.com/coreylad/emby-xtream/main/Emby.Xtream.Plugin/thumb.png",
-            "version": "${VERSION}",
-            "targetAbi": "10.9.0.0",
-            "changelog": "${CHANGELOG}",
-            "timestamp": "${TIMESTAMP}"
-          }
-          EOF
+          VERSION="$VERSION" TIMESTAMP="$TIMESTAMP" CHANGELOG="$CHANGELOG" python3 - <<'PYEOF'
+          import json
+          import os
+
+          with open("/tmp/meta.json", "w", encoding="utf-8") as meta_file:
+              json.dump({
+                  "guid": "b7e3c4a1-9f2d-4e8b-a5c6-d1f0e2b3c4a5",
+                  "name": "Xtream Tuner",
+                  "description": "Xtream-compatible Live TV tuner with EPG, category filtering, and pre-populated media info.",
+                  "overview": "An Emby/Jellyfin Server plugin that turns any Xtream-compatible IPTV service into a full Live TV, Movies, and Series library.",
+                  "owner": "coreylad",
+                  "category": "Live TV",
+                  "imageUrl": "https://raw.githubusercontent.com/coreylad/emby-xtream/main/Emby.Xtream.Plugin/thumb.png",
+                  "version": os.environ["VERSION"],
+                  "targetAbi": "10.9.0.0",
+                  "changelog": os.environ["CHANGELOG"],
+                  "timestamp": os.environ["TIMESTAMP"],
+              }, meta_file, indent=2)
+              meta_file.write("\n")
+          PYEOF
 
           # Create ZIP containing meta.json and the plugin DLL
           cd Emby.Xtream.Plugin/out
