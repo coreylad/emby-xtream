@@ -32,7 +32,7 @@ jobs:
           LATEST_VERSION_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           COMMIT_COUNT=$(git rev-list --count HEAD)
           if [ -n "$LATEST_VERSION_TAG" ]; then
-            BASE_VERSION=$(echo "${LATEST_VERSION_TAG#v}" | awk -F. '{ printf "%s.%s.%s", $1, ($2==""?"0":$2), ($3==""?"0":$3) }')
+            BASE_VERSION=$(echo "${LATEST_VERSION_TAG#v}" | awk -F '[.-]' '{ printf "%s.%s.%s", $1, ($2==""?"0":$2), ($3==""?"0":$3) }')
             COMMITS_SINCE_TAG=$(git rev-list --count "${LATEST_VERSION_TAG}..HEAD")
             if [ "$COMMITS_SINCE_TAG" -eq 0 ]; then
               VERSION="$BASE_VERSION.0"
