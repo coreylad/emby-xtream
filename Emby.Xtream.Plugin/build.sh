@@ -8,10 +8,11 @@ DLL_NAME="Emby.Xtream.Plugin.dll"
 # Derive version from git tags automatically:
 #   On tag v1.2.0        -> 1.2.0
 #   3 commits after tag  -> 1.2.0.3  (always higher than last release)
-#   No tags              -> 0.0.1
+#   No tags              -> 0.0.1.<commit-count>
 GIT_DESC=$(git -C "$SCRIPT_DIR" describe --tags 2>/dev/null || echo "")
+COMMIT_COUNT=$(git -C "$SCRIPT_DIR" rev-list --count HEAD 2>/dev/null || echo "1")
 if [ -z "$GIT_DESC" ]; then
-    VERSION="0.0.1"
+    VERSION="0.0.1.${COMMIT_COUNT}"
 elif echo "$GIT_DESC" | grep -qE -- '-[0-9]+-g[0-9a-f]+$'; then
     # N commits after a tag: v1.2.0-3-gabcdef -> 1.2.0.3
     BASE=$(echo "$GIT_DESC" | sed 's/^v//' | sed 's/-[0-9]*-g[0-9a-f]*$//')

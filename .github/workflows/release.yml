@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths-ignore:
+      - manifest.json
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,52 +19,75 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.ref_name }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Build plugin
+      - name: Derive release metadata
+        id: meta
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          cd Emby.Xtream.Plugin
-          dotnet publish -c Release -o out --no-self-contained -p:Version=$VERSION
-
-      - name: Generate release notes
-        id: notes
-        run: |
-          # Find previous tag
-          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
-          if [ -z "$PREV_TAG" ]; then
+          LATEST_VERSION_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          if [ -n "$LATEST_VERSION_TAG" ]; then
+            BASE_VERSION=$(echo "${LATEST_VERSION_TAG#v}" | awk -F. '{ printf "%s.%s.%s", $1, ($2==""?"0":$2), ($3==""?"0":$3) }')
+            COMMITS_SINCE_TAG=$(git rev-list --count "${LATEST_VERSION_TAG}..HEAD")
+            if [ "$COMMITS_SINCE_TAG" -eq 0 ]; then
+              VERSION="$BASE_VERSION.0"
+            else
+              VERSION="$BASE_VERSION.$COMMITS_SINCE_TAG"
+            fi
+          else
+            VERSION="0.0.1.${COMMIT_COUNT}"
+          fi
+          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ] || [ -z "${{ github.event.before }}" ]; then
             RANGE="HEAD"
           else
-            RANGE="${PREV_TAG}..HEAD"
+            RANGE="${{ github.event.before }}..${{ github.sha }}"
           fi
-          # Build notes from commit messages (skip merge commits)
+          CHANGELOG=$(git log "$RANGE" --no-merges --pretty=format:"- %s" | grep -v "Co-Authored-By" || true)
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- ${GITHUB_SHA}"
+          fi
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          ZIP_NAME="jellyfin-xtream-tuner_${VERSION}.zip"
+          RELEASE_TAG="release-${VERSION}"
+
+          {
+            echo "version=${VERSION}"
+            echo "zip_name=${ZIP_NAME}"
+            echo "timestamp=${TIMESTAMP}"
+            echo "release_tag=${RELEASE_TAG}"
+            echo "changelog<<EOF"
+            printf '%s\n' "$CHANGELOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build plugin
+        run: |
+          cd Emby.Xtream.Plugin
+          dotnet publish -c Release -o out --no-self-contained -p:Version=${{ steps.meta.outputs.version }}
+
+      - name: Generate release notes
+        run: |
           {
             echo "## What's Changed"
             echo ""
-            git log "$RANGE" --no-merges --pretty=format:"- %s" | grep -v "Co-Authored-By"
+            printf '%s\n' "${CHANGELOG}"
             echo ""
-            echo ""
-            if [ -n "$PREV_TAG" ]; then
-              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ github.ref_name }}"
-            fi
+            echo "**Commit**: https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
           } > release_notes.md
-          # Export changelog as a single-line string for the manifest
-          CHANGELOG=$(git log "$RANGE" --no-merges --pretty=format:"- %s" | grep -v "Co-Authored-By" | tr '\n' ' ')
-          echo "changelog=${CHANGELOG}" >> "$GITHUB_OUTPUT"
+        env:
+          CHANGELOG: ${{ steps.meta.outputs.changelog }}
 
       - name: Build Jellyfin ZIP
-        id: jellyfin
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          # Convert semver (1.2.3) to four-part (1.2.3.0) for Jellyfin
-          FOUR_PART=$(echo "$VERSION" | awk -F. '{ printf "%s.%s.%s.%s", $1, ($2==""?"0":$2), ($3==""?"0":$3), ($4==""?"0":$4) }')
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          ZIP_NAME="jellyfin-xtream-tuner_${VERSION}.zip"
-          CHANGELOG="${{ steps.notes.outputs.changelog }}"
+          VERSION=${{ steps.meta.outputs.version }}
+          TIMESTAMP=${{ steps.meta.outputs.timestamp }}
+          ZIP_NAME=${{ steps.meta.outputs.zip_name }}
+          CHANGELOG="${CHANGELOG}"
 
           # Write Jellyfin meta.json
           cat > /tmp/meta.json <<EOF
@@ -73,7 +99,7 @@ jobs:
             "owner": "coreylad",
             "category": "Live TV",
             "imageUrl": "https://raw.githubusercontent.com/coreylad/emby-xtream/main/Emby.Xtream.Plugin/thumb.png",
-            "version": "${FOUR_PART}",
+            "version": "${VERSION}",
             "targetAbi": "10.9.0.0",
             "changelog": "${CHANGELOG}",
             "timestamp": "${TIMESTAMP}"
@@ -87,13 +113,10 @@ jobs:
           cd ../..
 
           CHECKSUM=$(md5sum "${ZIP_NAME}" | awk '{print $1}')
-          SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
-
-          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
-          echo "version=${FOUR_PART}" >> "$GITHUB_OUTPUT"
-          echo "timestamp=${TIMESTAMP}" >> "$GITHUB_OUTPUT"
-          echo "checksum=${CHECKSUM}" >> "$GITHUB_OUTPUT"
-          echo "source_url=${SOURCE_URL}" >> "$GITHUB_OUTPUT"
+          echo "checksum=${CHECKSUM}" >> "$GITHUB_ENV"
+          echo "source_url=https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.release_tag }}/${ZIP_NAME}" >> "$GITHUB_ENV"
+        env:
+          CHANGELOG: ${{ steps.meta.outputs.changelog }}
 
       - name: Update manifest.json
         run: |
@@ -123,25 +146,31 @@ jobs:
               f.write("\n")
           PYEOF
         env:
-          VERSION:    ${{ steps.jellyfin.outputs.version }}
-          CHANGELOG:  ${{ steps.notes.outputs.changelog }}
-          SOURCE_URL: ${{ steps.jellyfin.outputs.source_url }}
-          CHECKSUM:   ${{ steps.jellyfin.outputs.checksum }}
-          TIMESTAMP:  ${{ steps.jellyfin.outputs.timestamp }}
+          VERSION:    ${{ steps.meta.outputs.version }}
+          CHANGELOG:  ${{ steps.meta.outputs.changelog }}
+          SOURCE_URL: ${{ env.source_url }}
+          CHECKSUM:   ${{ env.checksum }}
+          TIMESTAMP:  ${{ steps.meta.outputs.timestamp }}
 
       - name: Commit updated manifest.json
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add manifest.json
-          git commit -m "chore: update manifest.json for ${{ github.ref_name }}"
-          git push origin HEAD:main
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update manifest.json for ${{ steps.meta.outputs.version }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
 
-      - name: Create draft release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          name: Xtream Tuner ${{ steps.meta.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: |
             Emby.Xtream.Plugin/out/Emby.Xtream.Plugin.dll
-            ${{ steps.jellyfin.outputs.zip_name }}
+            ${{ steps.meta.outputs.zip_name }}
           body_path: release_notes.md
-          draft: true
+          draft: false
