@@ -14,6 +14,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -47,10 +49,99 @@ jobs:
               echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ github.ref_name }}"
             fi
           } > release_notes.md
+          # Export changelog as a single-line string for the manifest
+          CHANGELOG=$(git log "$RANGE" --no-merges --pretty=format:"- %s" | grep -v "Co-Authored-By" | tr '\n' ' ')
+          echo "changelog=${CHANGELOG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Jellyfin ZIP
+        id: jellyfin
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          # Convert semver (1.2.3) to four-part (1.2.3.0) for Jellyfin
+          FOUR_PART=$(echo "$VERSION" | awk -F. '{ printf "%s.%s.%s.%s", $1, ($2==""?"0":$2), ($3==""?"0":$3), ($4==""?"0":$4) }')
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          ZIP_NAME="jellyfin-xtream-tuner_${VERSION}.zip"
+          CHANGELOG="${{ steps.notes.outputs.changelog }}"
+
+          # Write Jellyfin meta.json
+          cat > /tmp/meta.json <<EOF
+          {
+            "guid": "b7e3c4a1-9f2d-4e8b-a5c6-d1f0e2b3c4a5",
+            "name": "Xtream Tuner",
+            "description": "Xtream-compatible Live TV tuner with EPG, category filtering, and pre-populated media info.",
+            "overview": "An Emby/Jellyfin Server plugin that turns any Xtream-compatible IPTV service into a full Live TV, Movies, and Series library.",
+            "owner": "coreylad",
+            "category": "Live TV",
+            "imageUrl": "https://raw.githubusercontent.com/coreylad/emby-xtream/main/logo.svg",
+            "version": "${FOUR_PART}",
+            "targetAbi": "10.9.0.0",
+            "changelog": "${CHANGELOG}",
+            "timestamp": "${TIMESTAMP}"
+          }
+          EOF
+
+          # Create ZIP containing meta.json and the plugin DLL
+          cd Emby.Xtream.Plugin/out
+          cp /tmp/meta.json meta.json
+          zip "../../${ZIP_NAME}" meta.json Emby.Xtream.Plugin.dll
+          cd ../..
+
+          CHECKSUM=$(md5sum "${ZIP_NAME}" | awk '{print $1}')
+          SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
+
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${FOUR_PART}" >> "$GITHUB_OUTPUT"
+          echo "timestamp=${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+          echo "checksum=${CHECKSUM}" >> "$GITHUB_OUTPUT"
+          echo "source_url=${SOURCE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update manifest.json
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, sys
+
+          manifest_path = "manifest.json"
+          with open(manifest_path) as f:
+              manifest = json.load(f)
+
+          new_version = {
+              "version":   os.environ["VERSION"],
+              "changelog": os.environ["CHANGELOG"],
+              "targetAbi": "10.9.0.0",
+              "sourceUrl": os.environ["SOURCE_URL"],
+              "checksum":  os.environ["CHECKSUM"],
+              "timestamp": os.environ["TIMESTAMP"],
+          }
+
+          # Prepend new version (newest first) and remove any existing entry with same version
+          plugin = manifest[0]
+          plugin["versions"] = [v for v in plugin.get("versions", []) if v.get("version") != new_version["version"]]
+          plugin["versions"].insert(0, new_version)
+
+          with open(manifest_path, "w") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+          PYEOF
+        env:
+          VERSION:    ${{ steps.jellyfin.outputs.version }}
+          CHANGELOG:  ${{ steps.notes.outputs.changelog }}
+          SOURCE_URL: ${{ steps.jellyfin.outputs.source_url }}
+          CHECKSUM:   ${{ steps.jellyfin.outputs.checksum }}
+          TIMESTAMP:  ${{ steps.jellyfin.outputs.timestamp }}
+
+      - name: Commit updated manifest.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "chore: update manifest.json for ${{ github.ref_name }}"
+          git push origin HEAD:main
 
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          files: Emby.Xtream.Plugin/out/Emby.Xtream.Plugin.dll
+          files: |
+            Emby.Xtream.Plugin/out/Emby.Xtream.Plugin.dll
+            ${{ steps.jellyfin.outputs.zip_name }}
           body_path: release_notes.md
           draft: true
